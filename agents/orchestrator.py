@@ -170,7 +170,7 @@ class CourseOrchestratorAgent:
         )
         
         # Convert to dict for downstream consumers
-        return outline.dict()
+        return outline.model_dump()
     
     def _validate_and_normalize_input(
         self,
@@ -192,7 +192,8 @@ class CourseOrchestratorAgent:
             return user_input
         elif isinstance(user_input, dict):
             try:
-                return UserInputSchema(**user_input)
+                # Pydantic V2 will automatically convert string enum values to enum instances
+                return UserInputSchema.model_validate(user_input)
             except Exception as e:
                 raise ValueError(f"Invalid UserInputSchema: {str(e)}")
         else:

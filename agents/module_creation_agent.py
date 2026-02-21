@@ -34,7 +34,7 @@ from schemas.course_outline import (
     CourseOutlineSchema, Module, Lesson, LearningObjective, BloomLevel, Reference, SourceType
 )
 from schemas.execution_context import ExecutionContext
-from services.llm_service import LLMService
+from services.llm_service import get_llm_service
 from utils.duration_allocator import DurationAllocator
 from utils.learning_mode_templates import LearningModeTemplates
 
@@ -75,7 +75,7 @@ class ModuleCreationAgent:
     
     def __init__(self):
         """Initialize with LLM service and utilities."""
-        self.llm_service = LLMService()
+        self.llm_service = get_llm_service()
         self.duration_allocator = DurationAllocator()
     
     async def run(self, context: ExecutionContext) -> CourseOutlineSchema:
@@ -116,10 +116,10 @@ class ModuleCreationAgent:
         
         # 5. Call LLM
         logger.debug(f"Calling LLM for outline synthesis (execution_id={context.execution_id})")
-        llm_response = await self.llm_service.call_model(prompt, temperature=0.7, max_tokens=8000)
+        llm_response = await self.llm_service.generate(prompt, temperature=0.7, max_tokens=8000)
         
         # 6. Parse response
-        parsed_data = self._parse_llm_response(llm_response)
+        parsed_data = self._parse_llm_response(llm_response.content)
         
         # 7. Structure into CourseOutlineSchema
         outline = self._structure_outline(
@@ -173,104 +173,64 @@ class ModuleCreationAgent:
         mode_template: Dict[str, Any]
     ) -> str:
         """
-        STEP 5.3: Build 5-layer multi-prompt architecture.
+        STEP 5.3: Build compact multi-layer prompt (~7K tokens instead of 15K).
         
-        Layers:
-        1. System: Expert curriculum designer persona
-        2. Developer: Schema instructions, strict JSON format
-        3. User: Original educator input
-        4. Context: Retrieved docs, web search, PDF summaries
-        5. Constraints: Duration plan, depth guidance, validation rules
+        Optimized for token efficiency while maintaining quality.
         """
         
         user_input = context.user_input
         
-        # LAYER 1: System prompt (persona)
-        system_layer = """You are an expert curriculum designer with 20+ years of experience.
-You understand:
-- Bloom's taxonomy and learning outcomes
-- Adult learning principles (andragogy)
-- Course structure and pedagogy
-- Educational best practices
-
-Your task: Generate a comprehensive, curriculum-grade course outline."""
+        # LAYER 1: System prompt (concise)
+        system_layer = """You are an expert curriculum designer. Generate a comprehensive course outline based on Bloom's taxonomy and learning outcomes."""
         
-        # LAYER 2: Developer instructions (schema & format)
-        schema_instructions = """OUTPUT FORMAT (STRICT JSON):
+        # LAYER 2: Developer instructions (compact schema)
+        schema_instructions = """OUTPUT FORMAT (STRICT JSON ONLY):
 {
-  "course_title": "string - exact title from user",
-  "course_summary": "string - 150-300 word overview",
-  "learning_mode": "string - theory|project_based|interview_prep|research",
+  "course_title": "exact title",
+  "course_summary": "150-300 word overview",
   "modules": [
     {
-      "module_id": "M_1, M_2, etc",
+      "module_id": "M_1",
       "title": "string",
-      "description": "string - detailed module overview",
-      "estimated_hours": number,
+      "description": "module overview",
+      "estimated_hours": 6.0,
       "learning_objectives": [
-        {
-          "statement": "string",
-          "bloom_level": "remember|understand|apply|analyze|evaluate|create",
-          "assessment_method": "string"
-        }
+        {"statement": "measurable objective", "bloom_level": "understand|apply|analyze", "assessment_method": "quiz|project|discussion"}
       ],
-      "lessons": [
-        {
-          "title": "string",
-          "description": "string",
-          "duration_minutes": number,
-          "key_concepts": ["string"],
-          "activities": ["string"]
-        }
-      ],
-      "assessment_type": "quiz|project|discussion|exam|presentation|peer_review|capstone",
+      "lessons": [{"title": "string", "duration_minutes": 60, "key_concepts": ["concept"]}],
+      "assessment_type": "quiz|project|exam|capstone",
       "prerequisites": ["string"],
-      "has_capstone": boolean
+      "has_capstone": false
     }
   ],
-  "course_level_objectives": [learning objectives array],
-  "references": [
-    {
-      "title": "string",
-      "source_type": "retrieved|web|pdf|generated",
-      "url": "string or null",
-      "confidence_score": 0.0-1.0
-    }
-  ]
+  "course_level_objectives": [{"statement": "string", "bloom_level": "string"}],
+  "references": [{"title": "string", "source_type": "retrieved|web|pdf", "confidence_score": 0.85}]
 }
-
-CRITICAL: Return ONLY valid JSON. No markdown, no code blocks, no extra text."""
+CRITICAL: Return ONLY valid JSON."""
         
-        # LAYER 3: User input section
+        # LAYER 3: User input
         user_section = f"""USER INPUT:
 Title: {user_input.course_title}
 Description: {user_input.course_description}
-Audience: {user_input.audience_level} - {user_input.audience_category}
+Audience: {user_input.audience_level} ({user_input.audience_category})
 Depth: {user_input.depth_requirement}
-Duration: {user_input.duration_hours} hours
-Learning Mode: {user_input.learning_mode}
-"""
+Duration: {user_input.duration_hours}h | Mode: {user_input.learning_mode}"""
         
-        # LAYER 4: Context summary (retrieved docs, web search, PDF)
+        # LAYER 4: Context (trimmed)
         context_section = self._summarize_context(context)
         
-        # LAYER 5: Constraints & guidance
-        constraints_section = f"""CONSTRAINTS & GUIDANCE:
-Duration Plan: {duration_plan['num_modules']} modules (~{duration_plan['avg_hours_per_module']:.1f}h each)
-Depth Guidance: {duration_plan['depth_guidance']['description']}
-Learning Mode: {mode_template['template_description']}
-
-RULES:
-1. Total duration MUST be approximately {user_input.duration_hours} hours
-2. Bloom's levels should progress from {duration_plan['depth_guidance']['primary_blooms'][0]} to higher levels
-3. Assessment emphasis: {', '.join(mode_template['assessment_emphasis']['primary'])}
-4. Each module should have 3-5 learning objectives
-5. Include references with confidence scores (no hallucinated citations)
-6. Modules should be sequenced logically
-7. If capstone required by mode, include it as final module
-8. Ensure learning objectives are measurable and specific"""
+        # LAYER 5: Constraints (concise)
+        constraints_section = f"""REQUIREMENTS:
+- {duration_plan['num_modules']} modules, ~{duration_plan['avg_hours_per_module']:.1f}h each
+- Total: ~{user_input.duration_hours}h
+- Bloom levels: progress from {duration_plan['depth_guidance']['primary_blooms'][0]} to higher
+- Mode emphasis: {', '.join(mode_template['assessment_emphasis']['primary'])}
+- 3-5 objectives per module (specific, measurable)
+- Logically sequenced
+- Include capstone if mode requires it
+- Reference confidence ≥ 0.7"""
         
-        # Combine all layers
+        # Combine layers
         full_prompt = f"""{system_layer}
 
 {schema_instructions}
@@ -281,7 +241,7 @@ RULES:
 
 {constraints_section}
 
-Generate the course outline now."""
+Generate the course outline."""
         
         return full_prompt
     
@@ -298,8 +258,8 @@ Generate the course outline now."""
             sections.append(self._summarize_web_results(context.web_search_results))
         
         # Summarize PDF (if provided)
-        if context.pdf_text:
-            sections.append(self._summarize_pdf(context.pdf_text))
+        if context.uploaded_pdf_text:
+            sections.append(self._summarize_pdf(context.uploaded_pdf_text))
         
         if not sections:
             return "CONTEXT: No external sources provided. Course outline based on user input and general knowledge."
@@ -307,25 +267,34 @@ Generate the course outline now."""
         return "CONTEXT:\n" + "\n".join(sections)
     
     def _summarize_retrieved_docs(self, retrieved_documents: List[Dict]) -> str:
-        """STEP 5.6: Summarize retrieved institutional documents."""
+        """STEP 5.6: Concise summary of retrieved documents."""
         if not retrieved_documents:
             return ""
         
-        summary = f"Retrieved Documents ({len(retrieved_documents)} documents):\n"
-        for doc in retrieved_documents[:3]:  # Top 3
-            summary += f"- {doc.get('title', 'Untitled')}: {doc.get('content', '')[:200]}...\n"
+        docs_list = retrieved_documents.get('retrieved_chunks', []) if isinstance(retrieved_documents, dict) else retrieved_documents
+        if not docs_list:
+            return ""
+        
+        summary = f"Institutional Sources ({len(docs_list)} docs):"
+        for doc in docs_list[:2]:  # Top 2 only
+            title = doc.get('title', 'Source') if isinstance(doc, dict) else getattr(doc, 'title', 'Source')
+            summary += f" {title};"
         
         return summary
     
     def _summarize_web_results(self, web_search_results: Dict) -> str:
-        """STEP 5.6: Summarize web search insights."""
+        """STEP 5.6: Concise web search summary."""
         if not web_search_results:
             return ""
         
         results = web_search_results.get("results", [])
-        summary = f"Web Search Results ({len(results)} relevant sources):\n"
-        for result in results[:3]:  # Top 3
-            summary += f"- {result.get('title', 'Untitled')}: {result.get('snippet', '')[:150]}...\n"
+        if not results:
+            return ""
+        
+        summary = f"Web Sources ({len(results)} results):"
+        for result in results[:2]:  # Top 2 only
+            title = result.get('title', 'Source')
+            summary += f" {title};"
         
         return summary
     
@@ -540,7 +509,7 @@ Generate the course outline now."""
                 references.append(ref)
         
         # 4. PDF guidance
-        if context.pdf_text:
+        if context.uploaded_pdf_text:
             ref = Reference(
                 title="User-provided PDF guidance",
                 source_type=SourceType.PDF,
@@ -571,7 +540,7 @@ Generate the course outline now."""
         if context.web_search_results:
             score += 0.15
         
-        if context.pdf_text:
+        if context.uploaded_pdf_text:
             score += 0.10
         
         return min(1.0, score)

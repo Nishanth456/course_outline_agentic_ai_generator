@@ -5,7 +5,7 @@ Validates frontend form submissions.
 This is the first contract any agent receives.
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from typing import Optional
 from enum import Enum
 
@@ -109,6 +109,4 @@ class UserInputSchema(BaseModel):
         description="Free-text additional requirements/constraints"
     )
     
-    class Config:
-        """Pydantic config."""
-        use_enum_values = True
+    model_config = ConfigDict(use_enum_values=True)  # Serialize enums as strings

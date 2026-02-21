@@ -10,6 +10,10 @@ from typing import Optional, List, Dict, Any
 from enum import Enum
 import os
 from dataclasses import dataclass
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class LLMProvider(str, Enum):
@@ -243,12 +247,110 @@ class AnthropicService(BaseLLMService):
         return int((len(text) / 500) * 75)
 
 
+class GeminiService(BaseLLMService):
+    """Google Gemini LLM Service (using google.genai SDK)."""
+
+    def __init__(self, config: LLMConfig):
+        """Initialize Gemini service."""
+        super().__init__(config)
+        try:
+            from google import genai
+            # Check for Gemini API key in environment (multiple names supported)
+            api_key = config.api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+            if not api_key:
+                raise ValueError("GEMINI_API_KEY or GOOGLE_API_KEY not found in environment or config")
+            # Create client with API key
+            self.client = genai.Client(api_key=api_key)
+            self.model_name = config.model
+        except ImportError:
+            raise ImportError("google-genai package required: pip install google-genai")
+
+    async def generate(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        **kwargs
+    ) -> LLMResponse:
+        """Generate response from Gemini API."""
+        try:
+            full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+            
+            response = await self._async_generate(full_prompt, **kwargs)
+            
+            return LLMResponse(
+                content=response.text,
+                tokens_used=None,  # Gemini doesn't expose token count easily
+                model=self.model_name,
+                provider="gemini",
+                raw_response={"raw": str(response)}
+            )
+        except Exception as e:
+            raise RuntimeError(f"Gemini generation failed: {str(e)}")
+
+    async def _async_generate(self, prompt: str, **kwargs):
+        """Async wrapper for Gemini generate (which is sync)."""
+        import asyncio
+        loop = asyncio.get_event_loop()
+        return await loop.run_in_executor(
+            None,
+            lambda: self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt,
+                config=self._get_generation_config(**kwargs)
+            )
+        )
+
+    async def generate_streaming(
+        self,
+        prompt: str,
+        system_prompt: Optional[str] = None,
+        **kwargs
+    ):
+        """Stream response from Gemini API (as async generator)."""
+        full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+        
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        response = await loop.run_in_executor(
+            None,
+            lambda: self.client.models.generate_content(
+                model=self.model_name,
+                contents=full_prompt,
+                config=self._get_generation_config(**kwargs),
+                stream=True
+            )
+        )
+        
+        for chunk in response:
+            if chunk.text:
+                yield chunk.text
+
+    def _get_generation_config(self, **kwargs):
+        """Get Gemini generation config."""
+        try:
+            from google.genai.types import GenerateContentConfig
+            return GenerateContentConfig(
+                temperature=kwargs.get('temperature', self.config.temperature),
+                max_output_tokens=kwargs.get('max_tokens', self.config.max_tokens or 2048),
+            )
+        except ImportError:
+            # Fallback if config import fails
+            return None
+
+    def estimate_tokens(self, text: str) -> int:
+        """Rough token estimation for Gemini."""
+        # Gemini uses roughly 4 chars per token (similar to OpenAI)
+        return len(text) // 4
+
+
 class LLMFactory:
     """Factory for creating LLM service instances."""
 
     _providers = {
         LLMProvider.OPENAI: OpenAIService,
         LLMProvider.ANTHROPIC: AnthropicService,
+        LLMProvider.GEMINI: GeminiService,
         # Add more providers as needed
     }
 
@@ -295,7 +397,9 @@ def get_llm_service() -> BaseLLMService:
     
     if _llm_service is None:
         # Load configuration from environment
-        provider_str = os.getenv("LLM_PROVIDER", "openai").lower()
+        provider_str = os.getenv("LLM_PROVIDER", "gemini").lower()
+        # Map common aliases
+        provider_str = "gemini" if provider_str in ["google", "gemini"] else provider_str
         provider = LLMProvider(provider_str)
         
         config = LLMConfig(
@@ -323,3 +427,20 @@ def reset_llm_service() -> None:
     """Reset global LLM service (useful for testing)."""
     global _llm_service
     _llm_service = None
+
+
+# Convenience alias for direct instantiation
+class LLMService:
+    """Convenience class for LLM service access."""
+    
+    def __new__(cls):
+        """Return the global singleton LLM service."""
+        return get_llm_service()
+    
+    @staticmethod
+    def call_model(prompt: str, system_prompt: Optional[str] = None, 
+                   temperature: Optional[float] = None, 
+                   max_tokens: Optional[int] = None, **kwargs):
+        """Convenience static method to call LLM."""
+        service = get_llm_service()
+        return service.generate(prompt, system_prompt, **kwargs)

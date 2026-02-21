@@ -399,11 +399,11 @@ def main():
                 orchestrator = CourseOrchestratorAgent()
                 
                 # Run async agent
-                outline = asyncio.run(orchestrator.run(user_input.dict()))
+                outline = asyncio.run(orchestrator.run(user_input.model_dump()))
                 
                 # Store in session
                 update_session_data("current_outline", outline)
-                update_session_data("user_input", user_input.dict())
+                update_session_data("user_input", user_input.model_dump())
                 update_session_data("run_id", outline.get("generated_by_agent", ""))
                 
                 # Render output

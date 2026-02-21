@@ -4,6 +4,10 @@ Configuration file for development and production.
 
 import os
 from enum import Enum
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Environment(str, Enum):
@@ -19,8 +23,8 @@ class Config:
     ENV = os.getenv("ENVIRONMENT", Environment.DEVELOPMENT)
     
     # LLM Config
-    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "openai")  # openai, anthropic, local
-    LLM_MODEL = os.getenv("LLM_MODEL", "gpt-4-turbo-preview")
+    LLM_PROVIDER = os.getenv("LLM_PROVIDER", "google")  # openai, anthropic, local
+    LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
     LLM_TEMPERATURE = float(os.getenv("LLM_TEMPERATURE", "0.7"))
     LLM_MAX_TOKENS = int(os.getenv("LLM_MAX_TOKENS", "2000"))
     

@@ -146,7 +146,7 @@ def test_all_components():
         )
         
         orchestrator = CourseOrchestratorAgent()
-        outline = asyncio.run(orchestrator.run(user_input.dict(), session_id="test"))
+        outline = asyncio.run(orchestrator.run(user_input.model_dump(), session_id="test"))
         
         assert outline is not None
         assert "modules" in outline or isinstance(outline, dict)

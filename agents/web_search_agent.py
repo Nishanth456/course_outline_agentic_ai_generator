@@ -134,14 +134,7 @@ class WebSearchAgent:
         user_input: UserInputSchema
     ) -> List[str]:
         """
-        Generate strategic search queries based on user context.
-        
-        Queries designed to:
-        - Find syllabus/curriculum
-        - Find course outlines
-        - Find learning objectives
-        - Find industry standards
-        - Find skill requirements
+        Generate search queries from course title and description only.
         
         Args:
             user_input: User course requirements
@@ -149,21 +142,15 @@ class WebSearchAgent:
         Returns:
             List of search queries
         """
-        title = user_input.course_title
-        audience = user_input.audience_category.value
-        depth = user_input.depth_requirement.value
-        mode = user_input.learning_mode.value
-        
         queries = []
         
-        # Query 1: Course syllabus
-        queries.append(f"{title} syllabus curriculum")
+        # Query 1: Course title
+        queries.append(f"{user_input.course_title} curriculum")
         
-        # Query 2: Course outline
-        queries.append(f"{title} {audience} course outline")
-        
-        # Query 3: Learning objectives
-        queries.append(f"{title} learning objectives {depth}")
+        # Query 2: Title + description keywords
+        if user_input.course_description:
+            first_sentence = user_input.course_description.split(".")[0].strip()
+            queries.append(f"{user_input.course_title} {first_sentence}")
         
         # Limit to budget
         queries = queries[:self.search_budget]
@@ -260,24 +247,21 @@ class WebSearchAgent:
         queries: List[str],
         formatted_results: str,
     ) -> str:
-        """Build LLM prompt for synthesis."""
-        try:
-            with open("prompts/web_search_agent.txt", "r") as f:
-                template = f.read()
-        except FileNotFoundError:
-            self.logger.warning("Prompt template not found, using simple prompt")
-            template = "Summarize: {search_results}"
-        
-        # Fill in template variables
-        prompt = template.format(
-            search_query=" | ".join(queries),
-            course_title=user_input.course_title,
-            audience_category=user_input.audience_category.value,
-            depth_requirement=user_input.depth_requirement.value,
-            learning_mode=user_input.learning_mode.value,
-            search_results=formatted_results,
-        )
-        
+        """Build LLM prompt for synthesis (simplified)."""
+        prompt = f"""Summarize these search results about: {user_input.course_title}
+
+Description: {user_input.course_description}
+
+Search Results:
+{formatted_results}
+
+Extract:
+1. Key topics and concepts
+2. Recommended modules with estimated hours
+3. Learning objectives
+4. Required skills
+
+Return valid JSON only."""
         return prompt
     
     def _mock_llm_synthesis(

@@ -248,7 +248,7 @@ class CourseOutlineSchema(BaseModel):
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for serialization."""
-        return self.dict()
+        return self.model_dump()
     
     def __str__(self) -> str:
         """Human-readable representation."""

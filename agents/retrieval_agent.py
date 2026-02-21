@@ -145,12 +145,7 @@ class RetrievalAgent:
     
     def _generate_search_queries(self, user_input: UserInputSchema) -> List[str]:
         """
-        Generate search queries from user input.
-        
-        Strategies:
-        1. Topic-focused (from course title/description)
-        2. Audience-aligned (from level/category)
-        3. Depth-aligned (from depth requirement)
+        Generate search queries from course title and description only.
         
         Args:
             user_input: UserInputSchema
@@ -160,36 +155,17 @@ class RetrievalAgent:
         """
         queries = []
         
-        # Query 1: Title-based
+        # Query 1: Course title
         if user_input.course_title:
             queries.append(user_input.course_title)
         
         # Query 2: Description keywords
         if user_input.course_description:
-            # Extract first sentence or key terms
-            desc_parts = user_input.course_description.split(".")[:1]
-            if desc_parts:
-                queries.append(desc_parts[0].strip())
+            first_sentence = user_input.course_description.split(".")[0].strip()
+            if first_sentence:
+                queries.append(first_sentence)
         
-        # Query 3: Audience-aligned
-        audience_str = f"{user_input.audience_level.value} {user_input.audience_category.value}".replace("_", " ")
-        queries.append(audience_str)
-        
-        # Query 4: Mode-aligned
-        if user_input.learning_mode:
-            mode_str = f"{user_input.learning_mode.value} learning".replace("_", " ")
-            queries.append(mode_str)
-        
-        # Query 5: Depth-aligned
-        if user_input.depth_requirement:
-            depth_str = f"{user_input.depth_requirement.value} course".replace("_", " ")
-            queries.append(depth_str)
-        
-        # Query 6: Custom constraints
-        if user_input.custom_constraints:
-            queries.append(user_input.custom_constraints)
-        
-        # Remove duplicates while preserving order
+        # Remove duplicates
         seen = set()
         unique_queries = []
         for q in queries:
@@ -197,7 +173,7 @@ class RetrievalAgent:
                 seen.add(q.lower())
                 unique_queries.append(q.strip())
         
-        return unique_queries[:5]  # Limit to 5 queries
+        return unique_queries[:3]  # Limit to 3 queries
     
     def _build_metadata_filters(self, user_input: UserInputSchema) -> Optional[Dict[str, str]]:
         """

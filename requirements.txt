@@ -17,6 +17,9 @@ google-search-results
 # OpenAI SDK
 openai
 
+# Google Generative AI (Gemini)
+google-genai
+
 # PDF Processing
 PyPDF2
 pydantic  # Let pip resolve a compatible version

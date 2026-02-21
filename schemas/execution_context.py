@@ -63,7 +63,7 @@ class ExecutionContext:
             "execution_id": self.execution_id,
             "execution_mode": self.execution_mode,
             "created_at": self.created_at.isoformat(),
-            "user_input": self.user_input.dict() if hasattr(self.user_input, 'dict') else str(self.user_input),
+            "user_input": self.user_input.model_dump() if hasattr(self.user_input, 'model_dump') else (self.user_input.dict() if hasattr(self.user_input, 'dict') else str(self.user_input)),
             "has_pdf_text": self.uploaded_pdf_text is not None,
         }
     

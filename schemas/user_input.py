@@ -11,34 +11,47 @@ from enum import Enum
 
 
 class AudienceLevel(str, Enum):
-    """Audience / educational level."""
-    HIGH_SCHOOL = "high_school"
-    UNDERGRADUATE = "undergraduate"
-    POSTGRADUATE = "postgraduate"
-    PROFESSIONAL = "professional"
+    """🎯 Skill level of learners."""
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+    ADVANCED = "advanced"
+    PRO_EXPERT = "pro_expert"
+    MIXED_LEVEL = "mixed_level"
 
 
 class AudienceCategory(str, Enum):
-    """Audience background / role."""
-    CS_MAJOR = "cs_major"
-    NON_CS_DOMAIN = "non_cs_domain"
-    INDUSTRY_PROFESSIONAL = "industry_professional"
-    SELF_LEARNER = "self_learner"
+    """👥 Who the course is designed for."""
+    SCHOOL_STUDENTS = "school_students"
+    COLLEGE_STUDENTS = "college_students"
+    UNDERGRADUATE = "undergraduate"
+    POSTGRADUATE = "postgraduate"
+    RESEARCHERS = "researchers"
+    PROFESSORS_FACULTY = "professors_faculty"
+    WORKING_PROFESSIONALS = "working_professionals"
+    INDUSTRY_EXPERTS = "industry_experts"
 
 
 class LearningMode(str, Enum):
-    """How content is delivered."""
-    SYNCHRONOUS = "synchronous"
-    ASYNCHRONOUS = "asynchronous"
+    """📚 How the content should be structured."""
+    THEORY_ORIENTED = "theory_oriented"
+    PRACTICAL_HANDS_ON = "practical_hands_on"
+    PROJECT_BASED = "project_based"
+    CASE_STUDY_DRIVEN = "case_study_driven"
+    RESEARCH_ORIENTED = "research_oriented"
+    EXAM_ORIENTED = "exam_oriented"
+    INTERVIEW_PREPARATION = "interview_preparation"
     HYBRID = "hybrid"
 
 
 class DepthRequirement(str, Enum):
-    """How deep / theoretical vs practical."""
+    """🔬 How deep the explanations should go."""
+    INTRODUCTORY = "introductory"
     CONCEPTUAL = "conceptual"
-    APPLIED = "applied"
-    IMPLEMENTATION = "implementation"
-    RESEARCH = "research"
+    IMPLEMENTATION_LEVEL = "implementation_level"
+    ADVANCED_IMPLEMENTATION = "advanced_implementation"
+    INDUSTRY_LEVEL = "industry_level"
+    RESEARCH_LEVEL = "research_level"
+    PHD_LEVEL = "phd_level"
 
 
 class UserInputSchema(BaseModel):

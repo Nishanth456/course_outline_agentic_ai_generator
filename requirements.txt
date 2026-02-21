@@ -1,44 +1,45 @@
-"""
-Dependencies for the Course AI Agent project.
-"""
+# Web / App Framework
+streamlit
 
-# Framework
-streamlit==1.28.0
-langchain==0.1.0
-langchain-openai==0.0.2
-langchain-anthropic==0.0.4
+# LangChain + Integrations
+langchain
+langchain-openai
+langchain-anthropic
 
 # Vector DB
-chromadb==0.4.0
+chromadb
 
 # Web Search
-tavily-python==0.1.0
-duckduckgo-search==3.9.0
-google-search-results==2.4.2
+tavily-python
+duckduckgo-search
+google-search-results
+
+# OpenAI SDK
+openai
 
 # PDF Processing
-PyPDF2==3.0.1
-pydantic==2.5.0
+PyPDF2
+pydantic  # Let pip resolve a compatible version
 
 # Data & Utilities
-numpy==1.24.0
-pandas==2.1.0
-requests==2.31.0
+numpy
+pandas
+requests
 
 # Testing
-pytest==7.4.0
-pytest-asyncio==0.21.0
-pytest-cov==4.1.0
+pytest
+pytest-asyncio
+pytest-cov
 
 # Observability & Logging
-python-json-logger==2.0.7
+python-json-logger
 
 # Development
-black==23.10.0
-isort==5.12.0
-pylint==3.0.0
-mypy==1.6.0
+black
+isort
+pylint
+mypy
 
 # Production/Deployment
-gunicorn==21.2.0
-python-dotenv==1.0.0
+gunicorn
+python-dotenv

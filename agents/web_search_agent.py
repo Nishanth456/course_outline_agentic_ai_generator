@@ -1,16 +1,417 @@
-"""PHASE 4: Web Search Agent stub."""
+"""
+PHASE 4 — Web Search Agent
 
-from agents.base import WebSearchAgent
+Iteratively fetches public educational information from the web.
+Uses multi-tool orchestration (Tavily → DuckDuckGo → SerpAPI with fallback).
+Synthesizes results into structured curriculum recommendations.
+
+Design Principles:
+- Pure data gathering (no module generation)
+- Graceful degradation (no hard failures)
+- Clean provenance (every URL traced)
+- LLM-powered synthesis (structured output)
+"""
+
+import asyncio
+import logging
+import json
+import time
+from typing import List, Optional, Tuple
+from datetime import datetime
+
+from schemas.user_input import UserInputSchema
+from schemas.execution_context import ExecutionContext
+from schemas.web_search_agent_output import (
+    WebSearchAgentOutput,
+    SearchTool,
+    RecommendedModule,
+    SourceLink,
+)
+from tools.web_search_tools import (
+    get_web_search_toolchain,
+    SearchResult,
+    reset_web_search_toolchain,
+)
+from services.llm_service import get_llm_service
 
 
-class PublicWebSearchAgent(WebSearchAgent):
+logger = logging.getLogger(__name__)
+
+
+class WebSearchAgent:
     """
-    Implementation for PHASE 4.
+    Agent responsible for gathering external knowledge via web search.
     
-    Uses LangChain Tools + fallback logic:
-    1. Try Tavily Search
-    2. Fallback to DuckDuckGo
-    3. Fallback to SerpAPI (if configured)
+    Workflow:
+    1. Receive user input & context
+    2. Generate contextual search queries
+    3. Execute multi-tool search
+    4. Synthesize results via LLM
+    5. Return structured output with provenance
+    
+    Explicit boundaries:
+    ✅ Search public sources
+    ✅ Summarize with LLM
+    ✅ Structure output
+    ✅ Track provenance
+    
+    ❌ No module generation
+    ❌ No internal db access
+    ❌ No validation/scoring
+    ❌ No direct UI access
     """
     
-    pass
+    def __init__(self):
+        """Initialize Web Search Agent."""
+        self.agent_name = "WebSearchAgent"
+        self.logger = logging.getLogger(self.agent_name)
+        self.toolchain = get_web_search_toolchain()
+        self.llm_service = None  # Lazy loaded
+        self.search_budget = 3  # Max searches per request
+    
+    def _get_llm_service(self):
+        """Lazy load LLM service."""
+        if self.llm_service is None:
+            try:
+                self.llm_service = get_llm_service()
+            except Exception as e:
+                self.logger.warning(f"LLM service not available: {e}")
+                self.llm_service = None
+        return self.llm_service
+    
+    async def run(
+        self, 
+        context: ExecutionContext
+    ) -> WebSearchAgentOutput:
+        """
+        Main entry point: search web for knowledge relevant to course request.
+        
+        Args:
+            context: ExecutionContext with user input
+            
+        Returns:
+            WebSearchAgentOutput with structured findings
+        """
+        start_time = time.time()
+        self.logger.info(f"WebSearchAgent.run() started for session {context.session_id}")
+        
+        try:
+            user_input = context.user_input
+            
+            # Step 1: Generate search queries
+            queries = await self._generate_search_queries(user_input)
+            self.logger.debug(f"Generated {len(queries)} search queries")
+            
+            # Step 2: Execute batch search
+            all_results, stats = await self._execute_batch_search(queries)
+            self.logger.info(f"Search results: {len(all_results)} total across {len(queries)} queries")
+            
+            # Step 3: Deduplicate and score
+            unique_results = self.toolchain.deduplicate_results(all_results)
+            self.logger.info(f"After dedup: {len(unique_results)} unique results")
+            
+            # Step 4: Synthesize with LLM
+            output = await self._synthesize_results(user_input, queries, unique_results)
+            
+            # Step 5: Calculate metrics
+            output.execution_time_ms = (time.time() - start_time) * 1000
+            output.result_count = len(unique_results)
+            output.high_quality_result_count = len([r for r in unique_results if r.relevance_score > 0.7])
+            
+            self.logger.info(
+                f"WebSearchAgent complete: confidence={output.confidence_score:.2f}, "
+                f"time={output.execution_time_ms:.0f}ms, results={output.result_count}"
+            )
+            
+            return output
+            
+        except Exception as e:
+            self.logger.error(f"WebSearchAgent failed: {e}")
+            return WebSearchAgentOutput.empty_search()
+    
+    async def _generate_search_queries(
+        self, 
+        user_input: UserInputSchema
+    ) -> List[str]:
+        """
+        Generate strategic search queries based on user context.
+        
+        Queries designed to:
+        - Find syllabus/curriculum
+        - Find course outlines
+        - Find learning objectives
+        - Find industry standards
+        - Find skill requirements
+        
+        Args:
+            user_input: User course requirements
+            
+        Returns:
+            List of search queries
+        """
+        title = user_input.course_title
+        audience = user_input.audience_category.value
+        depth = user_input.depth_requirement.value
+        mode = user_input.learning_mode.value
+        
+        queries = []
+        
+        # Query 1: Course syllabus
+        queries.append(f"{title} syllabus curriculum")
+        
+        # Query 2: Course outline
+        queries.append(f"{title} {audience} course outline")
+        
+        # Query 3: Learning objectives
+        queries.append(f"{title} learning objectives {depth}")
+        
+        # Limit to budget
+        queries = queries[:self.search_budget]
+        
+        self.logger.debug(f"Search queries: {queries}")
+        return queries
+    
+    async def _execute_batch_search(
+        self, 
+        queries: List[str]
+    ) -> Tuple[List[SearchResult], dict]:
+        """
+        Execute batch search across all queries with fallback.
+        
+        Args:
+            queries: Search queries
+            
+        Returns:
+            Tuple of (all_results, stats)
+        """
+        all_results, stats = self.toolchain.batch_search(
+            queries, 
+            max_results_per_query=5
+        )
+        
+        return all_results, stats
+    
+    async def _synthesize_results(
+        self,
+        user_input: UserInputSchema,
+        queries: List[str],
+        results: List[SearchResult],
+    ) -> WebSearchAgentOutput:
+        """
+        Use LLM to synthesize search results into structured output.
+        
+        Args:
+            user_input: Course request
+            queries: Queries executed
+            results: Raw search results
+            
+        Returns:
+            Structured WebSearchAgentOutput
+        """
+        # If no results, return empty
+        if not results:
+            return WebSearchAgentOutput(
+                search_query=" | ".join(queries),
+                search_summary="No web search results available.",
+                confidence_score=0.0,
+                tool_used=SearchTool.UNKNOWN,
+            )
+        
+        try:
+            # Format results for LLM
+            formatted_results = self._format_search_results(results)
+            
+            # Build LLM prompt
+            prompt = self._build_synthesis_prompt(
+                user_input=user_input,
+                queries=queries,
+                formatted_results=formatted_results,
+            )
+            
+            # Call LLM (mock for now)
+            llm_output = self._mock_llm_synthesis(user_input, results)
+            
+            # Parse LLM response
+            output = self._parse_synthesized_output(llm_output, queries, results)
+            
+            return output
+            
+        except Exception as e:
+            self.logger.error(f"LLM synthesis failed: {e}. Falling back to simple extraction.")
+            return self._simple_result_extraction(queries, results)
+    
+    def _format_search_results(self, results: List[SearchResult]) -> str:
+        """Format search results for LLM input."""
+        formatted = []
+        
+        for i, result in enumerate(results[:10], 1):  # Top 10
+            formatted.append(
+                f"{i}. {result.title}\n"
+                f"   URL: {result.url}\n"
+                f"   Source: {result.source} (score: {result.relevance_score:.2f})\n"
+                f"   {result.snippet[:150]}...\n"
+            )
+        
+        return "\n".join(formatted)
+    
+    def _build_synthesis_prompt(
+        self,
+        user_input: UserInputSchema,
+        queries: List[str],
+        formatted_results: str,
+    ) -> str:
+        """Build LLM prompt for synthesis."""
+        try:
+            with open("prompts/web_search_agent.txt", "r") as f:
+                template = f.read()
+        except FileNotFoundError:
+            self.logger.warning("Prompt template not found, using simple prompt")
+            template = "Summarize: {search_results}"
+        
+        # Fill in template variables
+        prompt = template.format(
+            search_query=" | ".join(queries),
+            course_title=user_input.course_title,
+            audience_category=user_input.audience_category.value,
+            depth_requirement=user_input.depth_requirement.value,
+            learning_mode=user_input.learning_mode.value,
+            search_results=formatted_results,
+        )
+        
+        return prompt
+    
+    def _mock_llm_synthesis(
+        self,
+        user_input: UserInputSchema,
+        results: List[SearchResult],
+    ) -> dict:
+        """
+        Mock LLM synthesis for testing (replace with real LLM call).
+        
+        Returns: Simulated LLM response
+        """
+        # Extract topics from results
+        topics = set()
+        for result in results:
+            # Simple keyword extraction
+            words = (result.title + " " + result.snippet).lower().split()
+            topics.update([w for w in words if len(w) > 5])
+        
+        topics = list(topics)[:8]
+        
+        return {
+            "search_summary": f"Web search found {len(results)} resources about {user_input.course_title}. "
+                            f"Key topics identified: {', '.join(topics[:3])}. "
+                            f"Multiple sources available with varying depth levels.",
+            "key_topics_found": topics,
+            "recommended_modules": [
+                {
+                    "title": f"{user_input.course_title} Fundamentals",
+                    "description": "Foundation course covering core concepts",
+                    "key_topics": topics[:3],
+                    "estimated_hours": 40,
+                    "difficulty_level": "beginner",
+                    "source_urls": [r.url for r in results[:2]],
+                }
+            ],
+            "learning_objectives_found": [
+                f"Understand principles of {user_input.course_title}",
+                f"Apply {user_input.course_title} concepts to real-world problems",
+            ],
+            "skillset_recommendations": ["Problem solving", "Critical thinking", "Technical foundation"],
+            "confidence_notes": f"Based on {len(results)} reliable sources with good relevance scores.",
+        }
+    
+    def _parse_synthesized_output(
+        self,
+        llm_output: dict,
+        queries: List[str],
+        results: List[SearchResult],
+    ) -> WebSearchAgentOutput:
+        """Parse LLM synthesis into WebSearchAgentOutput schema."""
+        
+        # Determine primary tool used
+        tool_used = SearchTool.TAVILY  # Default
+        if results:
+            # Use the source from top result
+            source_map = {
+                "tavily": SearchTool.TAVILY,
+                "duckduckgo": SearchTool.DUCKDUCKGO,
+                "serpapi": SearchTool.SERPAPI,
+            }
+            tool_used = source_map.get(results[0].source, SearchTool.UNKNOWN)
+        
+        # Build output
+        output = WebSearchAgentOutput(
+            search_query=" | ".join(queries),
+            search_summary=llm_output.get("search_summary", ""),
+            key_topics_found=llm_output.get("key_topics_found", []),
+            source_links=[
+                SourceLink(
+                    url=r.url,
+                    title=r.title,
+                    relevance_score=r.relevance_score,
+                    source_type="external",
+                    accessed_at=datetime.now().isoformat(),
+                )
+                for r in results
+            ],
+            learning_objectives_found=llm_output.get("learning_objectives_found", []),
+            skillset_recommendations=llm_output.get("skillset_recommendations", []),
+            confidence_score=0.7 if len(results) > 2 else 0.5,
+            tool_used=tool_used,
+            result_count=len(results),
+        )
+        
+        # Parse modules if present
+        for module_data in llm_output.get("recommended_modules", []):
+            module = RecommendedModule(**module_data)
+            output.recommended_modules.append(module)
+        
+        return output
+    
+    def _simple_result_extraction(
+        self,
+        queries: List[str],
+        results: List[SearchResult],
+    ) -> WebSearchAgentOutput:
+        """
+        Fallback: simple extraction without LLM.
+        Works when LLM synthesis fails.
+        """
+        return WebSearchAgentOutput(
+            search_query=" | ".join(queries),
+            search_summary=f"Found {len(results)} search results. "
+                          f"Top sources: {', '.join([r.title for r in results[:3]])}.",
+            key_topics_found=[],
+            source_links=[
+                SourceLink(
+                    url=r.url,
+                    title=r.title,
+                    relevance_score=r.relevance_score,
+                )
+                for r in results
+            ],
+            confidence_score=0.5,
+            tool_used=SearchTool.UNKNOWN,
+            result_count=len(results),
+            search_notes="Fallback extraction (LLM synthesis failed)",
+        )
+
+
+# Singleton instance
+_agent_instance = None
+
+
+def get_web_search_agent() -> WebSearchAgent:
+    """Get or create Web Search Agent singleton."""
+    global _agent_instance
+    if _agent_instance is None:
+        _agent_instance = WebSearchAgent()
+    return _agent_instance
+
+
+def reset_web_search_agent():
+    """Reset agent singleton (for testing)."""
+    global _agent_instance
+    _agent_instance = None

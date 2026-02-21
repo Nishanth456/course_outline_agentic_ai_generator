@@ -6,7 +6,7 @@ Main README for the Course AI Agent project.
 
 📚 AI-powered course outline generator using agentic LLM architecture.
 
-**Status:** ✅ Phase 4 Complete | Web Search Agent (External Knowledge Layer) integrated
+**Status:** ✅ Phase 5 Complete | Module Creation Agent (Core Intelligence Layer) with multi-layer prompts and provenance tracking
 
 ---
 
@@ -131,8 +131,8 @@ We implement incrementally, adding one capability per phase. Each phase is testa
 | 1 | Streamlit UI + session mgmt | 3-4d | ✅ Complete |
 | 2 | Orchestrator (single-pass) | 4-5d | ✅ Complete |
 | 3 | Retrieval Agent + ChromaDB | 5-6d | ✅ Complete |
-| 4 | Web Search Agent | 4-5d | ✅ **COMPLETE** ⭐ NEW |
-| 5 | Module Creation Agent | 8-10d | 🟢 In Progress |
+| 4 | Web Search Agent | 4-5d | ✅ Complete |
+| 5 | Module Creation Agent (Core Intelligence) | 8-10d | ✅ **COMPLETE** ⭐ NEW |
 | 6 | Validator Agent (agentic loop) | 6-7d | 🟡 Planning |
 | 7 | Query Agent (interactive) | 4-5d | 🟡 Planning |
 | 8 | UX polish & exports | 5-6d | 🟡 Planning |
@@ -163,6 +163,46 @@ See [PHASED_IMPLEMENTATION_PLAN.md](docs/PHASED_IMPLEMENTATION_PLAN.md) for deta
 ```bash
 pytest tests/test_phase_4_web_search.py -v
 # Expected: 30 passed in ~15s ✅
+```
+
+---
+
+### Phase 5 (Module Creation Agent - Core Intelligence Layer) - Just Delivered! 🎉
+
+**What was added:**
+- **STEP 5.1:** CourseOutlineSchema locked with comprehensive validation (BloomLevel, AssessmentType, SourceType enums, Reference dataclass for provenance)
+- **STEP 5.2:** Agent responsibility boundary (pure synthesis, no tool calls, stateless)
+- **STEP 5.3:** Multi-layer prompt architecture (system, developer, user, context, constraints layers)
+- **STEP 5.4:** Duration & depth allocator utility (pre-LLM logic prevents hallucination)
+- **STEP 5.5:** Learning mode templates (theory, project_based, interview_prep, research)
+- **STEP 5.6:** PDF integration (contextual guidance without dominating content)
+- **STEP 5.7:** Complete provenance tracking (4 source types: web, retrieved, pdf, generated)
+- **STEP 5.8:** Orchestrator Step 6 integration (non-blocking, passes through all context)
+- **STEP 5.9:** Comprehensive test suite (~25 tests covering all 9 steps)
+
+**Files Added/Updated:**
+- ✅ `agents/module_creation_agent.py` (580+ lines) - Full Phase 5 implementation
+- ✅ `schemas/course_outline.py` (450+ lines) - Enhanced with Phase 5 schema
+- ✅ `utils/duration_allocator.py` (~180 lines) - Pre-LLM duration logic
+- ✅ `utils/learning_mode_templates.py` (~280 lines) - Mode-specific structures
+- ✅ `tests/test_phase_5_module_creation.py` (~550 lines) - Comprehensive test suite
+- ✅ `agents/orchestrator.py` (updated) - Step 6 integration
+
+**Key Features:**
+- 🧠 Multi-layer prompts prevent LLM hallucination through explicit constraints
+- 📐 Pre-LLM duration allocation ensures module count respects time constraints
+- 🔄 Learning mode variations (theory → project-based → interview prep → research)
+- 📚 3 Bloom levels per module (remember → understand → apply → analyze → evaluate → create)
+- 🔗 Complete source attribution (who authored, what institution, when published)
+- 🎯 Confidence & completeness scoring (context richness → outline quality)
+- 🛡️ Schema validation (3-12 modules, 3-7 objectives per module, duration alignment)
+
+**Documentation Coming** (Phase 6 will add detailed guides)
+
+**Quick Test:**
+```bash
+pytest tests/test_phase_5_module_creation.py -v
+# Expected: ~25 passed in ~10s ✅
 ```
 
 ---

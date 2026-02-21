@@ -28,7 +28,7 @@ from uuid import uuid4
 from schemas.user_input import UserInputSchema
 from schemas.course_outline import CourseOutlineSchema
 from schemas.execution_context import ExecutionContext
-from agents.module_creation_agent import CoreModuleCreationAgent
+from agents.module_creation_agent import ModuleCreationAgent, get_module_creation_agent
 from agents.retrieval_agent import RetrievalAgent
 from agents.web_search_agent import WebSearchAgent
 
@@ -48,8 +48,8 @@ class CourseOrchestratorAgent:
     """
     
     def __init__(self):
-        """Initialize orchestrator with module creation, retrieval, and web search agents."""
-        self.module_agent = CoreModuleCreationAgent()
+        """Initialize orchestrator with agents for all phases."""
+        self.module_agent = get_module_creation_agent()  # Phase 5 singleton
         self.retrieval_agent = RetrievalAgent()
         self.web_search_agent = WebSearchAgent()
         self.logger = logger

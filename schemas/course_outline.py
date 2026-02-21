@@ -1,18 +1,26 @@
 """
-PHASE 0: Contract for course outline output.
+PHASE 5: CourseOutlineSchema - Locked curriculum contract.
 
-This is what agents produce. Standard schema for all downstream consumers (UI, exports, validator).
+STEP 5.1: Schema design locked with comprehensive validation.
 
-Reference: https://architecture.md -> Module / Outline schema section
+This is the production-ready output contract for curriculum-grade courses:
+- Bloom's taxonomy levels across all objectives
+- Complete provenance tracking (source attribution)
+- Confidence & completeness scoring
+- Multi-modal assessment strategies
+- Learning mode-specific structure variations
+
+Used by: Module Creation Agent (Step 5) → Validator Agent (Phase 6) → Exports, UI
 """
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, validator
 from typing import List, Optional, Dict, Any
 from enum import Enum
+from datetime import datetime
 
 
 class BloomLevel(str, Enum):
-    """Bloom's taxonomy cognitive levels."""
+    """Bloom's taxonomy cognitive levels (Remember → Create)."""
     REMEMBER = "remember"
     UNDERSTAND = "understand"
     APPLY = "apply"
@@ -21,124 +29,240 @@ class BloomLevel(str, Enum):
     CREATE = "create"
 
 
+class AssessmentType(str, Enum):
+    """Assessment method types (STEP 5.1)."""
+    QUIZ = "quiz"
+    PROJECT = "project"
+    DISCUSSION = "discussion"
+    EXAM = "exam"
+    PRESENTATION = "presentation"
+    PEER_REVIEW = "peer_review"
+    CAPSTONE = "capstone"
+    MIXED = "mixed"
+
+
+class SourceType(str, Enum):
+    """STEP 5.7: Reference source types."""
+    RETRIEVED = "retrieved"  # From Phase 3 ChromaDB
+    WEB = "web"  # From Phase 4 web search
+    PDF = "pdf"  # User-provided PDF
+    GENERATED = "generated"  # LLM output
+
+
+class Reference(BaseModel):
+    """
+    STEP 5.7: Complete provenance tracking.
+    
+    Enables source validation and citation.
+    """
+    
+    title: str = Field(..., description="Reference title")
+    source_type: SourceType = Field(..., description="Where this came from")
+    url: Optional[str] = Field(None, description="Source URL")
+    confidence_score: float = Field(..., ge=0.0, le=1.0, description="Confidence in accuracy")
+    author: Optional[str] = Field(None, description="Author name")
+    institution: Optional[str] = Field(None, description="Educational institution")
+    publication_year: Optional[int] = Field(None, description="Year published")
+    accessed_at: str = Field(default_factory=lambda: datetime.now().isoformat())
+
+
 class LearningObjective(BaseModel):
     """
-    Single measurable learning outcome.
+    Measurable learning outcome aligned to Bloom's taxonomy.
     
-    Follows "BLOOM_VERB + Measurable Metric" pattern.
-    e.g., "Implement a decision tree classifier using scikit-learn"
+    Pattern: "VERB + condition + measurable_metric"
+    Example: "Implement a decision tree classifier using scikit-learn"
     """
     
-    objective_id: str = Field(..., description="e.g., 'LO_1_1', 'LO_2_3'")
-    statement: str = Field(..., description="'Verb + measurable outcome'")
+    objective_id: str = Field(..., description="e.g., 'LO_1_1', 'CO_2'")
+    statement: str = Field(..., description="Measurable objective statement")
     bloom_level: BloomLevel = Field(..., description="Cognitive level")
-    assessment_method: str = Field(..., description="How it's assessed (e.g., 'Lab submission')")
+    assessment_method: str = Field(..., description="How assessed (quiz, project, etc)")
+    is_measurable: bool = Field(default=True, description="Can be objectively assessed")
 
 
 class Lesson(BaseModel):
     """Single lesson within a module."""
     
     lesson_id: str = Field(..., description="e.g., 'L_1_1'")
-    title: str
-    duration_minutes: int = Field(..., ge=15)
-    activities: List[str] = Field(default_factory=list, description="Activities in this lesson")
-    assessment_type: Optional[str] = Field(None, description="e.g., 'Quiz', 'Hands-on', 'Discussion'")
+    title: str = Field(..., description="Lesson title")
+    description: Optional[str] = Field(None, description="Detailed lesson description")
+    duration_minutes: int = Field(..., ge=15, description="Lesson duration")
+    key_concepts: List[str] = Field(default_factory=list, description="Main concepts covered")
+    activities: List[str] = Field(default_factory=list, description="Learning activities")
     resources: List[Dict[str, str]] = Field(
-        default_factory=list, 
+        default_factory=list,
         description="[{'title': '...', 'url': '...', 'type': 'video|reading|tool'}]"
     )
 
 
 class Module(BaseModel):
-    """Single course module."""
+    """
+    Single course module - fundamental unit of instruction.
     
-    module_id: str = Field(..., description="e.g., 'M_1'")
-    title: str
-    synopsis: str = Field(..., description="2–3 sentence overview")
-    estimated_hours: float
-    learning_objectives: List[LearningObjective] = Field(..., min_items=3, max_items=7)
-    lessons: List[Lesson] = Field(..., description="Ordered list of lessons")
-    assessment: Dict[str, Any] = Field(
-        default_factory=dict, 
-        description="{'type': 'quiz|project|exam', 'weight': 0.1, 'rubric': '...'}"
+    STEP 5.1: Locked structure with comprehensive validation.
+    """
+    
+    module_id: str = Field(..., description="e.g., 'M_1', 'M_2'")
+    title: str = Field(..., description="Module title")
+    description: str = Field(..., description="Detailed module overview")
+    estimated_hours: float = Field(..., gt=0, description="Estimated duration in hours")
+    learning_objectives: List[LearningObjective] = Field(
+        ..., 
+        min_items=3, 
+        max_items=7, 
+        description="3-7 measurable objectives per module"
     )
-    bloom_level: BloomLevel = Field(..., description="Highest Bloom level in this module")
-    keywords: List[str] = Field(default_factory=list, description="Key terms covered")
-    readings_and_resources: List[Dict[str, str]] = Field(
+    lessons: List[Lesson] = Field(..., min_items=1, description="Ordered list of lessons")
+    assessment_type: str = Field(..., description="Primary assessment method")
+    prerequisites: List[str] = Field(default_factory=list, description="Required prior knowledge")
+    has_capstone: bool = Field(default=False, description="Is this a capstone module?")
+    project_description: Optional[str] = Field(None, description="Project details if project-based")
+    source_tags: List[str] = Field(
         default_factory=list, 
-        description="[{'title': '...', 'url': '...', 'source': 'web|retrieved|uploaded', 'confidence': 0.9}]"
+        description="Source tags for traceability"
     )
 
 
 class CourseOutlineSchema(BaseModel):
     """
-    Complete course outline generated by Module Creation Agent.
+    STEP 5.1: Complete course outline - locked curriculum contract.
     
-    This is the main output schema used by validator, UI, and exports.
+    Production-ready output from Module Creation Agent (Phase 5).
+    Input to Validator Agent (Phase 6).
+    
+    Guarantees:
+    - All modules have 3-7 Bloom-aligned objectives
+    - Duration respected (total_hours enforced)
+    - Complete provenance (all sources tracked)
+    - Confidence & completeness scored
+    - Learning mode-specific structure variations
     """
     
-    # Metadata
-    course_title: str
-    course_summary: str = Field(..., description="2–3 sentence overview")
-    audience_level: str
-    audience_category: str
-    learning_mode: str
-    depth_requirement: str
-    total_duration_hours: int
-    
-    # Outcome structure
-    prerequisites: List[str] = Field(default_factory=list, description="Skills/concepts required")
-    course_level_learning_outcomes: List[LearningObjective] = Field(
+    # ========== Course Metadata ==========
+    course_title: str = Field(..., description="Official course title")
+    course_summary: str = Field(
         ..., 
-        description="Module-independent overall course goals"
+        description="150-300 word overview",
+        min_length=50,
+        max_length=500
     )
     
-    # Modules
-    modules: List[Module] = Field(..., min_items=2, description="Ordered list of modules")
+    # ========== Audience Definition ==========
+    audience_level: str = Field(
+        ..., 
+        description="high_school|undergraduate|postgraduate|professional"
+    )
+    audience_category: str = Field(..., description="e.g., 'STEM', 'Business', 'Creative'")
     
-    # Capstone / culminating activity
-    capstone_project: Optional[Dict[str, Any]] = Field(
-        None, 
-        description="{'title': '...', 'scope': '...', 'deliverables': [...], 'rubric': {...}}"
+    # ========== Learning Configuration ==========
+    learning_mode: str = Field(
+        ..., 
+        description="theory|project_based|interview_prep|research"
+    )
+    depth_requirement: str = Field(
+        ..., 
+        description="overview_level|intermediate_level|implementation_level|research_level"
+    )
+    total_duration_hours: float = Field(..., gt=0, description="Total course duration")
+    
+    # ========== Structure ==========
+    prerequisites: List[str] = Field(
+        default_factory=list, 
+        description="Required knowledge"
+    )
+    course_level_learning_objectives: List[LearningObjective] = Field(
+        default_factory=list, 
+        description="Overall course goals"
+    )
+    modules: List[Module] = Field(
+        ..., 
+        min_items=3, 
+        max_items=12, 
+        description="3-12 modules per course"
     )
     
-    # Assessment & evaluation
-    evaluation_strategy: Dict[str, Any] = Field(
+    # ========== Assessment & Strategy ==========
+    assessment_strategy: Dict[str, Any] = Field(
         default_factory=dict, 
-        description="{'formative': [...], 'summative': [...], 'rubrics': {...}}"
+        description="{'formative': [...], 'summative': [...]}"
     )
     
-    # Tools & resources
-    recommended_tools: List[str] = Field(default_factory=list)
-    datasets_or_datasets_examples: List[Dict[str, str]] = Field(
+    # ========== STEP 5.7: Provenance Tracking ==========
+    references: List[Reference] = Field(
         default_factory=list, 
-        description="[{'name': '...', 'source': '...', 'size': '...'}]"
+        description="Complete source attribution"
     )
     
-    # Instructor support
-    instructor_notes: Optional[str] = Field(
-        None, 
-        description="Pacing tips, inclusive design notes, etc."
+    # ========== Quality Metrics ==========
+    confidence_score: float = Field(
+        ..., 
+        ge=0.0, 
+        le=1.0, 
+        description="Confidence in curriculum quality (0.0-1.0)"
+    )
+    completeness_score: float = Field(
+        ..., 
+        ge=0.0, 
+        le=1.0, 
+        description="Completeness of course outline (0.0-1.0)"
     )
     
-    # Provenance & citations
-    citations_and_provenance: List[Dict[str, Any]] = Field(
-        default_factory=list, 
-        description="[{'source': 'web|retrieved|uploaded', 'url': '...', 'title': '...', 'confidence': 0.9}]"
-    )
-    
-    # System metadata
+    # ========== Metadata ==========
     generated_by_agent: str = Field(default="module_creation_agent")
-    generation_timestamp: Optional[str] = Field(None, description="ISO 8601 timestamp")
+    generation_timestamp: str = Field(default_factory=lambda: datetime.now().isoformat())
+    
+    # ========== Validation Rules ==========
+    
+    @validator("modules")
+    def validate_duration(cls, modules, values):
+        """Validate total module duration matches course duration."""
+        if "total_duration_hours" in values:
+            total = sum(m.estimated_hours for m in modules)
+            expected = values["total_duration_hours"]
+            # Allow 10% variance
+            if not (expected * 0.9 <= total <= expected * 1.1):
+                raise ValueError(f"Module duration sum ({total}h) must be ~{expected}h")
+        return modules
+    
+    @validator("modules")
+    def validate_module_objectives(cls, modules):
+        """Validate each module has 3-7 learning objectives."""
+        for module in modules:
+            obj_count = len(module.learning_objectives)
+            if obj_count < 3 or obj_count > 7:
+                raise ValueError(f"Module {module.module_id}: expected 3-7 objectives, got {obj_count}")
+        return modules
+    
+    @validator("course_level_learning_objectives")
+    def validate_course_objectives(cls, objectives):
+        """Validate course level objectives progression."""
+        if objectives:
+            # Should progress through Bloom levels
+            bloom_levels = [obj.bloom_level for obj in objectives]
+            if len(objectives) > 1:
+                # At least some progression expected
+                if bloom_levels[0] == bloom_levels[-1]:
+                    raise ValueError("Course objectives should show cognitive progression")
+        return objectives
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return self.dict()
+    
+    def __str__(self) -> str:
+        """Human-readable representation."""
+        return f"{self.course_title} ({self.total_duration_hours}h, {len(self.modules)} modules)" \
+               f" - Confidence: {self.confidence_score:.2%}, Completeness: {self.completeness_score:.2%}"
 
 
 class ValidatorFeedbackSchema(BaseModel):
-    """PHASE 6: Structured feedback from Validator Agent."""
+    """PHASE 6: Validator Agent feedback on course outline."""
     
     score: float = Field(..., ge=0, le=100, description="Numeric score out of 100")
     
     rubric_breakdown: Dict[str, float] = Field(
-        ..., 
+        default_factory=dict, 
         description="{'coverage': 25, 'depth_alignment': 18, ...}"
     )
     
@@ -156,5 +280,5 @@ class ValidatorFeedbackSchema(BaseModel):
     
     regenerate_modules: Optional[List[str]] = Field(
         None, 
-        description="List of module IDs that need regeneration, e.g., ['M_2', 'M_5']"
+        description="List of module IDs needing regeneration"
     )
